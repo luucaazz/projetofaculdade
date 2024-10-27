@@ -1,0 +1,158 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, FlatList, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import { launchImageLibrary } from 'react-native-image-picker';
+
+export default function App() {
+const [user, setUser] = useState(null);
+const [messages, setMessages] = useState([]);
+const [message, setMessage] = useState('');
+const [feedback, setFeedback] = useState('');
+const [imageUri, setImageUri] = useState(null);
+
+useEffect(() => {
+	const unsubscribeAuth = auth().onAuthStateChanged(userAuth => {
+		if (userAuth) {
+			setUser(userAuth);
+				} else {
+			auth().signInAnonymously();
+				}
+	 });
+
+const unsubscribeMessages = firestore()
+	.collection('messages')	
+	.orderBy('timestamp', 'desc')
+	.limit(50)
+	.onSnapshot(snapshot => {
+		const msgs = snapshot.docs.map(doc => ({
+			id: doc.id,
+			...doc.data()
+		}));
+		setMessages(msgs);
+	});
+
+return () => {
+	unsubscribeAuth();
+	unsubscribeMessages();
+};
+}, []);
+
+const sendMessage = () => {
+	if (message || imageUri) {
+		firestore().collection('messages').add({
+		text: message,
+		userId: user.uid,
+		imageUrl: imageUri || '',
+		timestamp: firestore.FieldValue.serverTimestamp()
+	});
+	setMessage('');
+	setImageUri(null);
+}
+};
+
+const sendFeedback = () => {
+	firestore().collection('feedback').add({
+		feedback,
+		userId: user.uid,
+		timestamp: firestore.FieldValue.serverTimestamp()
+	});
+	setFeedback('');
+};
+
+const pickImage = () => {
+	launchImageLibrary({ mediaType: 'photo' }, response => {
+		if (!response.didCancel && !response.error) {
+			setImageUri(response.assets[0].uri);
+		}
+	});
+};
+const renderMessage = ({ item }) => (
+	<View style={styles.message}>
+		<Text style={styles.text}>{item.text}</Text>
+		{item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} /> : null}
+	</View>
+);
+
+return (
+	<View style={styles.container}>
+		<FlatList
+			data={messages}
+			renderItem={renderMessage}
+			keyExtractor={item => item.id}
+			Inverted
+			style={styles.messageList}
+	/>
+	<TextInput
+		style={styles.input}
+		placeholder="Digite sua mensagem"
+		placeholderTextColor="#aaa"
+		value={message}
+		onChangeText={setMessage}
+	/>
+	<TouchableOpacity onPress={pickImage} style={styles.button}>
+		<Text style={styles.buttonText}>Escolher Imagem</Text>
+	</TouchableOpacity>
+	<Button title="Enviar" onPress={sendMessage} color="#444" />
+	<TextInput
+		style={styles.feedbackInput}
+		placeholder="Envie seu feedback"
+		placeholderTextColor="#aaa"
+		value={feedback}
+		onChangeText={setFeedback}
+	/>
+	<Button title="Enviar Feedback" onPress={sendFeedback} color="#444" />
+</View>
+);
+}
+
+const styles = StyleSheet.create({
+	container: {
+		flex: 1,
+		backgroundColor: '#000',
+		padding: 10
+	},
+	messageList: {
+		flex: 1,
+		marginBottom: 10
+},
+message: {
+	backgroundColor: '#333',
+	padding: 10,
+	marginBottom: 5,
+	borderRadius: 5
+},
+text: {
+	color: '#fff'
+},
+image: {
+	width: 200,
+	height: 200,
+	marginTop: 5
+},
+input: {
+	backgroundColor: '#444',
+	color: '#fff',
+	padding: 10,
+	borderRadius: 5,
+	marginBottom: 10
+},
+feedbackInput: {
+	backgroundColor: '#444',
+	color: '#fff',
+	padding: 10,
+	borderRadius: 5,
+	marginTop: 20,
+	marginBottom: 10
+},
+button: {
+	alignItems: 'center',
+	padding: 10,
+	backgroundColor: '#555',
+	marginBottom: 10,
+	borderRadius: 5
+},
+buttonText: {
+	color: '#fff'
+}
+});
